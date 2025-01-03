@@ -1,0 +1,89 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Transform: AWS::Serverless-2016-10-31
+Parameters:
+  Env:
+    Description: Environment type.
+    Default: dev
+    Type: String
+    AllowedValues: [prod, dev]
+    ConstraintDescription: must specify prod, dev.
+Mappings:
+  EnvMap:
+    dev:
+      env: "dev"
+      AlertSns: arn:aws:sns:ap-northeast-1:xxxxxxxxxxxx:sns-alert
+      SecurityGroupIds: sg-xxxxxxxxxxxxx
+      SubnetIdA: subnet-xxxxxxxxxxxxx
+      SubnetIdC: subnet-xxxxxxxxxxxxx
+Resources:
+  Lambda:
+    Type: AWS::Serverless::Function
+    Properties:
+      Architectures:
+        - arm64
+      Handler: lambda_function.lambda_handler
+      Runtime: python3.11
+      CodeUri: ./src
+      Policies:
+        - AWSLambdaBasicExecutionRole
+      Timeout: 180
+      VpcConfig:
+        SecurityGroupIds:
+          - !FindInMap [EnvMap, !Ref Env, SecurityGroupIds]
+        SubnetIds:
+          - !FindInMap [EnvMap, !Ref Env, SubnetIdA] # zone-a
+          - !FindInMap [EnvMap, !Ref Env, SubnetIdC] # zone-c
+      Layers:
+        - !Ref LambdaLayer
+      Tags:
+        Owner: Mugen
+        Group: Sample
+        Env: !FindInMap [EnvMap, !Ref Env, env]
+      Events:
+        SqsEvent:
+          Type: SQS
+          Properties:
+            BatchSize: 1
+            Enabled: true
+            Queue: !FindInMap [EnvMap, !Ref Env, EventTriggerSqsArn]
+  LambdaLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${Lambda}
+      RetentionInDays: 90
+  MetricsFilter:
+    DependsOn: LambdaLogGroup
+    Type: AWS::Logs::MetricFilter
+    Properties:
+      FilterPattern: ERROR
+      LogGroupName: !Sub /aws/lambda/${Lambda}
+      MetricTransformations:
+        - MetricNamespace: logs-error-metrics
+          MetricName: aws-lambda-deploy-sample-error-metrics
+          MetricValue: "1"
+          DefaultValue: 0.0
+  Alarm:
+    DependsOn: MetricsFilter
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: aws-lambda-deploy-sample
+      AlarmDescription: "[aws-lambda-deploy-sample] でERRORが検知されました。"
+      Namespace: logs-error-metrics
+      MetricName: aws-lambda-deploy-sample-error-metrics
+      Period: 60
+      Statistic: Sum
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      Threshold: 1.0
+      EvaluationPeriods: 1
+      DatapointsToAlarm: 1
+      AlarmActions:
+        - !FindInMap [EnvMap, !Ref Env, AlertSns]
+  LambdaLayer:
+    Type: AWS::Serverless::LayerVersion
+    Metadata:
+      BuildMethod: python3.11
+    Properties:
+      LayerName: aws-lambda-deploy-sample-layer
+      ContentUri: ./layer
+      CompatibleRuntimes:
+        - python3.11

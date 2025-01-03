@@ -1,0 +1,151 @@
+name: Build and Deploy (dev)
+
+on:
+  push:
+    branches:
+      - "main"
+
+env:
+  ENV: dev
+  AWS_REGION: ap-northeast-1
+  AWS_ROLE_ARN: arn:aws:iam::xxxxxxxxx:role/github_actions_role
+
+jobs:
+  build-and-deploy:
+    outputs:
+      done: ${{ steps.check.outputs.message }}
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      # リポジトリのチェックアウト
+      - name: Checkout
+        uses: actions/checkout@v3
+
+      # 環境セットアップ
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.11"
+
+      - name: Set up SAM
+        uses: aws-actions/setup-sam@v2
+
+      # # AWS認証
+      - name: Configure AWS credentials from IAM Role
+        uses: aws-actions/configure-aws-credentials@v2
+        with:
+          role-to-assume: ${{ env.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: build
+        run: sam build
+
+      - name: deploy
+        run: sam deploy --config-env ${{ env.ENV }} --no-confirm-changeset --no-fail-on-empty-changeset
+
+      - id: check
+        if: ${{ always() }}
+        run: |
+          echo "message=Build-and-Deploy ${{ (job.status == 'success' && '✅  ') || '❌  ' }}" >> $GITHUB_OUTPUT
+
+  slack_notification_failure:
+    runs-on: ubuntu-latest
+    if: failure()
+    needs: [build-and-deploy]
+    steps:
+      - name: Send GitHub Action trigger data to Slack workflow
+        id: slack
+        uses: slackapi/slack-github-action@v1.23.0
+        with:
+          channel-id: "XXXXXXXX"
+          payload: |
+            {
+              "text": "*GitHub Action FAILED*",
+              "attachments": [
+                {
+                  "color": "#ff0000",
+                  "author_name": "${{ github.actor }}",
+                  "author_icon": "${{ github.event.sender.avatar_url }}",
+                  "fields": [
+                    {
+                      "title": "Repository",
+                      "value": "${{ github.repository }}"
+                    },
+                    {
+                      "title": "Ref",
+                      "value": "${{ github.ref }}"
+                    },
+                    {
+                      "title": "Workflow #${{ github.run_number }} failed",
+                      "value": "${{ needs.build-and-deploy.outputs.done }}"
+                    },
+                    {
+                      "title": "Commit Message",
+                      "value": ${{ toJSON(github.event.head_commit.message) }}
+                    },
+                    {
+                      "title": "GitHub Actions URL",
+                      "value": "${{ github.event.repository.url }}/actions/runs/${{ github.run_id }}"
+                    },
+                    {
+                      "title": "Compare URL",
+                      "value": "${{ github.event.compare }}"
+                    }
+                  ]
+                }
+              ]
+            }
+        env:
+          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
+
+  slack_notification_success:
+    runs-on: ubuntu-latest
+    if: success()
+    needs: [build-and-deploy]
+    steps:
+      - name: Send GitHub Action trigger data to Slack workflow
+        id: slack
+        uses: slackapi/slack-github-action@v1.23.0
+        with:
+          channel-id: "XXXXXXXX"
+          payload: |
+            {
+              "text": "*GitHub Action SUCCEEDED*",
+              "attachments": [
+                {
+                  "color": "#00ff00",
+                  "author_name": "${{ github.actor }}",
+                  "author_icon": "${{ github.event.sender.avatar_url }}",
+                  "fields": [
+                    {
+                      "title": "Repository",
+                      "value": "${{ github.repository }}"
+                    },
+                    {
+                      "title": "Ref",
+                      "value": "${{ github.ref }}"
+                    },
+                    {
+                      "title": "Workflow #${{ github.run_number }} success",
+                      "value": "${{ needs.build-and-deploy.outputs.done }}"
+                    },
+                    {
+                      "title": "Commit Message",
+                      "value": ${{ toJSON(github.event.head_commit.message) }}
+                    },
+                    {
+                      "title": "GitHub Actions URL",
+                      "value": "${{ github.event.repository.url }}/actions/runs/${{ github.run_id }}"
+                    },
+                    {
+                      "title": "Compare URL",
+                      "value": "${{ github.event.compare }}"
+                    }
+                  ]
+                }
+              ]
+            }
+        env:
+          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}

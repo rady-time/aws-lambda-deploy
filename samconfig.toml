@@ -1,0 +1,17 @@
+version = 0.1
+
+### Dev  Settings ###
+[dev]
+[dev.deploy]
+[dev.deploy.parameters]
+stack_name = "aws-lambda-deploy-sample"
+s3_prefix = "sample/aws-lambda-deploy-sample"
+s3_bucket = "xxxxx-build"
+region = "ap-northeast-1"
+confirm_changeset = true
+capabilities = "CAPABILITY_IAM"
+disable_rollback = true
+image_repositories = []
+parameter_overrides = "Env=\"dev\""
+tags = "Owner=\"test\" Env=\"dev\" Group=\"sample\""
+role_arn = "arn:aws:iam::xxxxxxxxxx:role/deploy_role"
