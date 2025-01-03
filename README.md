@@ -115,3 +115,49 @@ jobs:
       - name: SAM deploy
         run: sam deploy --config-env ${{ env.ENV }} --no-confirm-changeset --no-fail-on-empty-changeset
 ```
+
+## AWSロール
+### `arn:aws:iam::xxxxxxxxx:role/github_actions_role`
+GitHubActionsワークフローファイルで利用する以下のAWSロール。  
+ジョブ内でAWSリソースを操作する際に必要な権限を持つ。
+```
+{
+    "Version": "2012-10-17",
+    "Statement": [
+        {
+            "Sid": "githubActions",
+            "Effect": "Allow",
+            "Action": [
+                "iam:PassRole",
+                "s3:*",
+                "cloudformation:*"
+            ],
+            "Resource": "*"
+        }
+    ]
+}
+
+```
+### `arn:aws:iam::xxxxxxxxxx:role/deploy_role`
+LambdaやCloudWatchLogsの作成等、SAMで作成されるCloudFormationで操作するリソース操作で使われるロール。  
+```
+{
+    "Version": "2012-10-17",
+    "Statement": [
+        {
+            "Sid": "CloudFormation",
+            "Effect": "Allow",
+            "Action": [
+                "cloudwatch:*",
+                "chatbot:*",
+                "events:*",
+                "logs:*",
+                "s3:*",
+                "secretsmanager:*",
+                "sqs:*"
+            ],
+            "Resource": "*"
+        }
+    ]
+}
+```
